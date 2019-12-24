@@ -78,7 +78,8 @@ class PPOLoss(RLLoss):
         ratio = diff.exp()
 
         surr1 = torch.clamp(ratio, min=1.-self.eps, max=1.+self.eps) * loss
-        surr2 = ratio * loss
+#        surr2 = ratio * loss
+        surr2 = torch.clamp(ratio, min=-100., max=100.) * loss # we clip also from bottom side!
         #  print("\nratio:", ratio, "clipped", surr1 > surr2)
         grads = torch.min(surr1, surr2)
 

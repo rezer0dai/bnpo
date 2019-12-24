@@ -15,7 +15,7 @@ class BrainDescription:
             optim_pool_size, optim_epochs, optim_batch_size, recalc_delay,
             lr_actor, learning_delay, learning_repeat,
             sync_delta_a, sync_delta_c, tau_actor, tau_critic,
-            bellman, ppo_eps, natural, mean_only, separate_actors
+            bellman, ppo_eps, natural, mean_only, separate_actors, prio_schedule=None
             ):
         self.memory_size = memory_size
         self.batch_size = batch_size
@@ -35,6 +35,8 @@ class BrainDescription:
         self.natural = natural
         self.mean_only = mean_only
         self.separate_actors = separate_actors
+
+        self.prio_schedule = prio_schedule
 
         self.counter = 0
 

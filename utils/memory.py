@@ -35,7 +35,7 @@ class Memory:
         else:
             samples = self.memory[list(itertools.chain.from_iterable(idx))]
 
-        return self._decompose(samples[:batch_size].to(self.device))
+        return (torch.ones(batch_size), self._decompose(samples[:batch_size].to(self.device)))
 
     def __len__(self):
         if not len(self.back_pointers):

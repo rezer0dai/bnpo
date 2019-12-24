@@ -1,13 +1,14 @@
 import numpy as np
 import random
 
-from utils.fastmem import FastMemory
+from utils.fastmem import *
 from timebudget import timebudget
 
 class MemoryBoost:
     def __init__(self, descs, memory, credit_assign, brain, n_step, good_reach):
-        self.fast_m = [ FastMemory(
-            desc, memory.chunks, memory.device) for desc in descs ]
+        self.fast_m = [ IRFastMemory( # TODO add branch for PER ( Priotized Experience Replay )
+            desc, memory.chunks, memory.device) if cred.resampling else FastMemory(
+                desc, memory.chunks, memory.device) for cred, desc in zip(credit_assign, descs) ]
 
         memory.device = 'cpu'
         self.memory = memory
@@ -21,9 +22,11 @@ class MemoryBoost:
         assert False
 
     def push(self, ep, chunks, e_i, goods):
-        episode = self._push(ep, chunks, e_i, goods)
+        ir, episode = self._push(ep, chunks, e_i, goods)
+        if not len(episode):
+            return
         for fast_m in self.fast_m:
-            fast_m.push(episode)
+            fast_m.push(episode, ir)
 
     def step(self, ind, desc):
         pass
@@ -47,11 +50,11 @@ class MemoryBoost:
     def _push_to_fast(self, ind, recalc, indices, allowed_mask, episode):
         goals, states, memory, actions, probs, rewards, _, _, _, _, _ = episode
 
-        _, episode = self.credit[ind](goals, states, memory, actions, probs, rewards,
+        _, ir, episode = self.credit[ind](goals, states, memory, actions, probs, rewards,
                 self.brain, recalc=recalc, indices=indices)
 
         idx = np.arange(len(episode))[allowed_mask]
-        self.fast_m[ind].push(episode[idx])
+        self.fast_m[ind].push(episode[idx], ir)
 
         return episode
 
@@ -62,11 +65,11 @@ class MemoryBoost:
                 ] + [False] * (len(ep) - max_allowed)
 
         with timebudget("credit-assign"):
-            _, episode = self.credit[-1]( # it is double
+            _, ir, episode = self.credit[-1]( # it is double
                         *[ep[:, sum(chunks[:i+1]):sum(chunks[:i+2])] for i in range(len(chunks[:-1]))],
                         brain=self.brain,
                         recalc=True)
 
         idx = np.arange(len(episode))[allowed_mask]
         self.memory.push(episode, allowed_mask)
-        return episode[idx] # we returning copy not reference!
+        return ir, episode[idx] # we returning copy not reference!

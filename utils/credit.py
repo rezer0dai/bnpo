@@ -4,12 +4,15 @@ import torch
 
 import utils.policy as policy
 
-class CreditAssignment:
-    def __init__(self, cind, gae, n_step, floating_step, gamma, gae_tau):
+class CreditAssignment:# temporary resampling=False, if proved good then no default, need to choose!
+    def __init__(self, cind, gae, n_step, floating_step, gamma, gae_tau, resampling=False, kstep_ir=False, clip=None):
         self.cind = cind
         self.gae = gae
         self.n_step = n_step
         self.floating_step = floating_step
+        self.resampling = resampling
+        self.kstep_ir = kstep_ir
+        self.clip = clip
         self.policy = policy.GAE(gamma, gae_tau) if gae else policy.KSTEP(gamma)
 
     def __call__(self,
@@ -31,8 +34,11 @@ class CreditAssignment:
             indices,
             n_steps)
 
-        if recalc:
-            features = brain.recalc_feats(goals, states, actions)
+        if recalc or self.resampling:#we need everytime to resample! TODO: make it optional ?
+            features, ir_ratio = brain.recalc_feats(goals, states, actions, probs, n_steps,
+                    self.resampling, self.kstep_ir, self.cind, self.clip)
+        else:
+            ir_ratio = torch.ones(len(features))
 #        elif self.gae:
 #            n_steps[ [i for i in range(len(n_steps)) if i not in indices] ] = 0
 
@@ -41,7 +47,8 @@ class CreditAssignment:
 
         # we by defaulf skip
         assert c.shape == rewards.shape
-        return her, torch.cat([
+        assert not self.resampling or ir_ratio is not None
+        return her, ir_ratio, torch.cat([
                     goals, states, features, actions, probs, orig_rewards,
                     n_goals, n_states, features[n_indices],
                     c, d.view(-1, 1)] , 1)

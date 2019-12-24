@@ -3,8 +3,8 @@ import numpy as np
 from utils.credit import CreditAssignment
 
 class HER(CreditAssignment):
-    def __init__(self, cind, her_delay, gae, n_step, floating_step, gamma, gae_tau):
-        super().__init__(cind, gae, n_step, floating_step, gamma, gae_tau)
+    def __init__(self, cind, her_delay, gae, n_step, floating_step, gamma, gae_tau, resampling=False, kstep_ir=False, clip=None):
+        super().__init__(cind, gae, n_step, floating_step, gamma, gae_tau, resampling, kstep_ir, clip)
         self.her_delay = her_delay
 
     def _random_n_step(self, length, indices, recalc):

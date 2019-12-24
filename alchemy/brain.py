@@ -74,7 +74,7 @@ class Brain(META):
 
     @timebudget
     def _learn(self, batch, tau_actor, tau_critic, backward_policy, tind, mean_only, separate_actors):
-        goals, states, memory, actions, probs, _, n_goals, n_states, n_memory, n_rewards, n_discounts = batch
+        w_is, (goals, states, memory, actions, probs, _, n_goals, n_states, n_memory, n_rewards, n_discounts) = batch
 
         assert len(goals)
 
@@ -103,13 +103,13 @@ class Brain(META):
             _qa, _dists = self.ac_explorer(goals, states, memory, cind, a_i)
             #  return -((-_dists.log_prob(actions)+dists.log_prob(actions)).mean(1) * (qa - td_targets).mean(1)).mean()
             #NDDPG
-            return -((-_dists.log_prob(actions)+dists.log_prob(actions)).mean(1) * (_qa - td_targets).mean(1)).mean()
+            return -((-_dists.log_prob(actions)+dists.log_prob(actions)).mean(1) * (_qa - td_targets).mean(1) * w_is).mean()
             #PPO
             return -((_dists.log_prob(actions)-dists.log_prob(actions)).mean(1)*(td_targets - qa).mean(1)).mean()
 
 # learn ACTOR ~ explorer
         pi_loss = backward_policy(
-                qa, td_targets,
+                qa, td_targets, w_is,
                 probs, actions, dists,
                 surrogate_loss)
 
@@ -117,7 +117,8 @@ class Brain(META):
         # estimate reward
         q_replay = self.ac_explorer.value(goals, states, memory, actions, cind)
         # calculate loss via TD-learning
-        critic_loss = F.mse_loss(q_replay, td_targets)
+#        critic_loss = F.mse_loss(q_replay, td_targets) * w_is.mean()
+        critic_loss = ((q_replay - td_targets).pow(2).mean(1) * w_is).mean()
         # learn!
         self.backprop(self.critic_optimizer[cind], critic_loss, self.ac_explorer.critic_parameters(cind))
 
@@ -188,6 +189,11 @@ class Brain(META):
         loss.backward(retain_graph=callback is not ()) # propagate gradients
         torch.nn.utils.clip_grad_norm_(params, self.clip_norm) # avoid (inf, nan) stuffs
 
+#        for p in params:
+#            if not torch.isnan(p.detach()).sum(): continue
+#            print("NaN IN PARAMS!!", callback is None)
+#            return
+
         if just_grads:
             return # we want to have active grads but not to do backprop!
 
@@ -197,10 +203,27 @@ class Brain(META):
             optim.step() # trigger backprop
 
     @timebudget
-    def recalc_feats(self, goals, states, actions):
+    def recalc_feats(self, goals, states, actions, e_log_probs, n_steps, resampling, kstep_ir, cind, clip):
         with torch.no_grad():
             _, f = self.ac_target.encoder.extract_features(states)
-        return f
+
+            if not resampling:
+                return f, torch.ones(len(f))
+
+            if not self.stable_probs:
+                b_dist, _ = self.ac_explorer.act(goals, states, f, 0)
+            else:
+                b_dist, _ = self.ac_target.act(goals, states, f, cind)
+
+            b_log_probs = b_dist.log_prob(actions).mean(1)
+            e_log_probs = e_log_probs.mean(1)
+            ir_ratio = (b_log_probs - e_log_probs).exp()
+
+            if kstep_ir:
+                ir_ratio = torch.tensor([ir_ratio[i:i+k].prod() for i, k in enumerate(n_steps)])
+
+            ir_ratio = torch.clamp(ir_ratio, min=-clip, max=clip)
+        return f, ir_ratio
 
     def freeze_encoders(self):
         self.ac_explorer.freeze_encoders()

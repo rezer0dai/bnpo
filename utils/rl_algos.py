@@ -23,7 +23,7 @@ class BrainOptimizer:
         else:
             self.loss = policy.PPOLoss(eps=desc.ppo_eps, advantages=True, boost=False)
 
-    def __call__(self, qa, td_targets, probs, actions, dist, _eval):
+    def __call__(self, qa, td_targets, w_is, probs, actions, dist, _eval):
         assert self.bellman or self.clip, "ppo can be only active when clipped ( in our implementation )!"
 
         if not self.clip:#vanilla ddpg
@@ -36,7 +36,7 @@ class BrainOptimizer:
                 probs.mean(1), dist.log_prob(actions).mean(1))
 
         # descent
-        pi_loss = -pi_loss.mean()
+        pi_loss = -(pi_loss * w_is).mean()
 
         # learn!
         self.brain.backprop(
