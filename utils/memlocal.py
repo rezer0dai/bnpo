@@ -22,10 +22,10 @@ class MemoryBoost:
         assert False
 
     def push(self, ep, chunks, e_i, goods):
-        ir, episode = self._push(ep, chunks, e_i, goods)
-        if not len(episode):
-            return
-        for fast_m in self.fast_m:
+        for i, fast_m in enumerate(self.fast_m):
+            ir, episode = self._push(i, ep, chunks, e_i, goods)
+            if not len(episode):
+                return
             fast_m.push(episode, ir)
 
     def step(self, ind, desc):
@@ -59,13 +59,13 @@ class MemoryBoost:
         return episode
 
     @timebudget
-    def _push(self, ep, chunks, e_i, goods):
+    def _push(self, ind, ep, chunks, e_i, goods):
         max_allowed = len(ep) - self.n_step - 1
         allowed_mask = [ bool(sum(goods[i:i+self.good_reach, e_i])) for i in range(max_allowed)
                 ] + [False] * (len(ep) - max_allowed)
 
         with timebudget("credit-assign"):
-            _, ir, episode = self.credit[-1]( # it is double
+            _, ir, episode = self.credit[ind]( # it is double
                         *[ep[:, sum(chunks[:i+1]):sum(chunks[:i+2])] for i in range(len(chunks[:-1]))],
                         brain=self.brain,
                         recalc=True)
