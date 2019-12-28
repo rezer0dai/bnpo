@@ -211,13 +211,12 @@ class Brain(META):
                 return f, torch.ones(len(f))
 
             if not self.stable_probs:
-                b_dist, _ = self.ac_explorer.act(goals, states, f, 0)
+                t_dist, _ = self.ac_explorer.act(goals, states, f, 0)
             else:
-                b_dist, _ = self.ac_target.act(goals, states, f, cind)
+                t_dist, _ = self.ac_target.act(goals, states, f, cind)
 
-            b_log_probs = b_dist.log_prob(actions).mean(1)
-            e_log_probs = e_log_probs.mean(1)
-            ir_ratio = (b_log_probs - e_log_probs).exp()
+            t_log_probs = t_dist.log_prob(actions)
+            ir_ratio = (t_log_probs - e_log_probs).exp().mean(1)
 
             if kstep_ir:
                 ir_ratio = torch.tensor([ir_ratio[i:i+k].prod() for i, k in enumerate(n_steps)])
