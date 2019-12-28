@@ -156,15 +156,15 @@ class Brain(META):
         self.qa_vs = []
         self.qa_fs = []
 
-        a_i = random.randint(0, len(self.ac_explorer.actor) - 1)
+        a_i = random.randint(0, len(self.ac_target.actor) - 1)
         self.resample(t)
         with torch.no_grad(): # should run trough all explorers i guess, random one to choose ?
-            e_dist, mem = self.ac_explorer.act(goal, state, memory, a_i)
+            e_dist, mem = self.ac_explorer.act(goal, state, memory, 0)
 
             if not self.stable_probs:
                 t_dist = e_dist
             else:
-                t_dist, _ = self.ac_target.act(goal, state, memory, 0)
+                t_dist, _ = self.ac_target.act(goal, state, memory, a_i)
 
         return e_dist, mem.cpu(), t_dist
 
