@@ -32,7 +32,10 @@ from utils.encoders import *
 torch.set_default_tensor_type('torch.DoubleTensor')
 
 class GAHIL:
-    def __init__(self, lr=3e-3, state_size=30, goal_size=3, action_size=4, len_target_mem=4e+4, len_other_mem=1e+5):
+    def __init__(self,
+            lr=3e-3, state_size=30, goal_size=3, action_size=4,
+            len_target_mem=4e+4, len_other_mem=1e+5,
+            behavioral=False, action_active=False):
         # init network
         self.encoder = GlobalNormalizer(state_size, 1)
         self.goal = GoalGlobalNorm(goal_size)
@@ -62,6 +65,9 @@ class GAHIL:
         self.goal_size = goal_size
         self.action_size = action_size
 
+        self.behavioral = behavioral
+        self.action_active = action_active
+
     def register_target(self, state, next_state, goal, action):
         self.n_new_targets += len(state)
         self._push_experience(self.targets, state, next_state, goal, action)
@@ -73,11 +79,18 @@ class GAHIL:
         if self.n_cursor > self.others.buffer.maxlen // 3:
             self._learn(3, 2, 4096) # i guess specify trough ctor as well
 
-        return self._gan_critic(s, n, g, a)[0].detach()#.cpu().numpy()
+        r = self._gan_critic(s, n, g, a)[0].detach()#.cpu().numpy()
+        if self.behavioral:
+            return r.log() * -1.
+        return r
 
     def _gan_critic(self, s, n, g, a):
         sn, g = torch.cat([ self.encoder(s, None)[0], self.encoder(n, None)[0] ], 1), self.goal(g)
-        return self.gan_reward(sn, g, a)
+        r, a = self.gan_reward(sn, g, a)
+        if self.behavioral:
+            return (r.sigmoid(), a)
+        else:
+            return (r, a)
 
     def _acurracy_test(self):
         #  return
@@ -118,34 +131,44 @@ class GAHIL:
                 self.o_stat.append(fake.detach().mean(1).mean())
                 self.t_stat.append(real.detach().mean(1).mean())
 
-                # TODO tune it, now just intuitively / empirically / first good selection ...
-                gan_loss = (
-                    self.reward_loss(
-                        (fake - real.mean(0, keepdim=True)).mean(1),
-                        -2*torch.ones(len(fake))
-                    ) * .5 + self.reward_loss(
-                        (real - fake.mean(0, keepdim=True)).mean(1),
-                        2*torch.ones(len(real))
-                    ) * 1.) + self.reward_loss(
-                        real.mean(1),
-                        .1 + torch.zeros(real.shape[0])
-                        #torch.ones(real.shape[0])
-                    ) * 1e-1
+                if self.behavioral:
+                    gan_loss = (
+                        self.reward_loss(
+                            (fake - real.mean(0, keepdim=True)).mean(1),
+                            torch.ones(len(fake))
+                        ) + self.reward_loss(
+                            (real - fake.mean(0, keepdim=True)).mean(1),
+                            -torch.ones(len(real))
+                        ))
+                else:# evolutional : we learn reward function itself
+                    gan_loss = (
+                        self.reward_loss(
+                            (fake - real.mean(0, keepdim=True)).mean(1),
+                            -2*torch.ones(len(fake))
+                        ) * .5 + self.reward_loss(
+                            (real - fake.mean(0, keepdim=True)).mean(1),
+                            2*torch.ones(len(real))
+                        ) * 1.) + self.reward_loss(
+                            real.mean(1),
+                            .1 + torch.zeros(real.shape[0])
+                            #torch.ones(real.shape[0])
+                        ) * 1e-1
 
-                out = '''
-                action_loss = (
-                    self.action_loss(
-                        f_action,
-                        f_a[:, :self.action_size].view(f_action.shape)
-                    ) + self.action_loss(
-                        r_action,
-                        r_a[:, :self.action_size].view(r_action.shape)
-                    )) * 1e-2
-                #'''
+                if self.action_active:
+                    action_loss = (
+                        self.action_loss(
+                            f_action,
+                            f_a[:, :self.action_size].view(f_action.shape)
+                        ) + self.action_loss(
+                            r_action,
+                            r_a[:, :self.action_size].view(r_action.shape)
+                        )) * 1e-2
 
                 self.optim.zero_grad()
-                #(gan_loss + action_loss).backward()
-                gan_loss.backward()
+                if self.action_active:
+                    (gan_loss + action_loss).backward()
+                else:
+                    gan_loss.backward()
                 self.optim.step()
 
     def _push_experience(self, memory, state, next_state, goal, action):
