@@ -1,6 +1,8 @@
 import numpy as np
 import random, copy, sys
 
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -37,6 +39,8 @@ class Brain(META):
         encoder.share_memory()
         goal_encoder.share_memory()
 
+        Path(model_path).mkdir(parents=True, exist_ok=True)
+
         nes = Actor()
         self.ac_explorer = ActorCritic(encoder, goal_encoder,
                     [ nes.head() ],
@@ -46,6 +50,8 @@ class Brain(META):
                     [ Actor().head() for _ in range(n_actors) ],
                     [ Critic() for _ in range(n_critics) ], n_agents).to(device)
 
+        print(self.ac_target)
+        print(self.ac_explorer)
         # sync
         for target in self.ac_target.actor:
             self.polyak_update(self.ac_explorer.actor[0].parameters(), target, 1.)
@@ -76,10 +82,13 @@ class Brain(META):
     def _learn(self, batch, tau_actor, tau_critic, backward_policy, tind, mean_only, separate_actors):
         w_is, (goals, states, memory, actions, probs, _, n_goals, n_states, n_memory, n_rewards, n_discounts) = batch
 
+        if not len(goals):
+            return
         assert len(goals)
 
         self.losses.append([])
 
+#        print("LEARN!", len(goals))
 # resolve indexes
         if separate_actors:
             i = tind % len(self.ac_target.actor)
@@ -112,6 +121,11 @@ class Brain(META):
                 qa, td_targets, w_is,
                 probs, actions, dists,
                 surrogate_loss)
+
+#        cind = cind ^ 1 # lets try this, train Q by other agent, lets own stable
+#        with torch.no_grad():
+#            n_qa, _ = self.ac_target(n_goals, n_states, n_memory, cind, i ^ 1, mean_only)
+#        td_targets = n_rewards + n_discounts * n_qa
 
 # learn CRITIC ~ explorer + target
         # estimate reward
@@ -170,11 +184,11 @@ class Brain(META):
 
     def exploit(self, goal, state, memory, tind): # exploitation action
         with torch.no_grad():
-            dist, mem = self.ac_target.act(goal, state, memory, tind)
+            dist, mem = self.ac_target.act(goal, state, memory, tind % len(self.ac_target.actor))
 
             self.ag.append(dist.sample())
-            self.qa_vs.append(self.ac_explorer.value(goal, state, memory, dist.params(True), 0))
-            self.qa_fs.append(self.ac_target.value(goal, state, memory, dist.params(True), 0))
+            self.qa_vs.append(self.ac_explorer.value(goal, state, memory, dist.params(True), tind % len(self.ac_explorer.critic)))
+            self.qa_fs.append(self.ac_target.value(goal, state, memory, dist.params(True), tind % len(self.ac_target.critic)))
 
         return dist, mem.cpu(), dist
 
@@ -211,15 +225,16 @@ class Brain(META):
                 return f, torch.ones(len(f))
 
             if not self.stable_probs:
-                t_dist, _ = self.ac_explorer.act(goals, states, f, 0)
-            else:
-                t_dist, _ = self.ac_target.act(goals, states, f, cind)
+                e_dist, _ = self.ac_explorer.act(goals, states, f, 0)
+                e_log_probs = e_dist.log_prob(actions)
 
+            t_dist, _ = self.ac_target.act(goals, states, f, cind)
             t_log_probs = t_dist.log_prob(actions)
+
             ir_ratio = (t_log_probs - e_log_probs).exp().mean(1)
 
             if kstep_ir:
-                ir_ratio = torch.tensor([ir_ratio[i:i+k].prod() for i, k in enumerate(n_steps)])
+                ir_ratio = torch.tensor([ir_ratio[i:i+k].sum() for i, k in enumerate(n_steps)])
 
             ir_ratio = torch.clamp(ir_ratio, min=-clip, max=clip)
         return f, ir_ratio

@@ -33,25 +33,25 @@ class MemoryBoost:
 
     def sample(self, ind, desc):
         def update(ind): # curry curry
-            def _update(recalc, indices, allowed_mask, episode):
-                return self._push_to_fast(ind, recalc, indices, allowed_mask, episode)
+            def _update(recalc_feats, indices, allowed_mask, episode):
+                return self._push_to_fast(recalc_feats, ind, indices, allowed_mask, episode)
             return _update
 
         def sample():
             with timebudget("FullMemory-sample"):
-                yield self.memory.sample(update(ind), desc.batch_size, desc.memory_size)
+                return self.memory.sample(update(ind), desc.batch_size, desc.memory_size)
 
-        if random.randint(0, desc.recalc_delay):
-            return self.fast_m[ind].sample
-        else:
-            return sample
+        if 0 == random.randint(0, desc.recalc_delay):
+            sample()
+
+        return self.fast_m[ind].sample
 
     @timebudget
-    def _push_to_fast(self, ind, recalc, indices, allowed_mask, episode):
+    def _push_to_fast(self, recalc_feats, ind, indices, allowed_mask, episode):
         goals, states, memory, actions, probs, rewards, _, _, _, _, _ = episode
 
         _, ir, episode = self.credit[ind](goals, states, memory, actions, probs, rewards,
-                self.brain, recalc=recalc, indices=indices)
+                self.brain, recalc=recalc_feats, indices=indices)
 
         idx = np.arange(len(episode))[allowed_mask]
         self.fast_m[ind].push(episode[idx], ir)
@@ -60,8 +60,10 @@ class MemoryBoost:
 
     @timebudget
     def _push(self, ind, ep, chunks, e_i, goods):
-        max_allowed = len(ep) - self.n_step - 1
-        allowed_mask = [ bool(sum(goods[i:i+self.good_reach, e_i])) for i in range(max_allowed)
+        max_allowed = len(ep) - 1#self.n_step - 1
+        allowed_mask = [ bool(sum(goods[
+            max(0, i-self.good_reach):i+self.good_reach, e_i
+            ])) for i in range(max_allowed)
                 ] + [False] * (len(ep) - max_allowed)
 
         with timebudget("credit-assign"):

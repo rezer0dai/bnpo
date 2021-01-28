@@ -13,7 +13,7 @@ class HER(CreditAssignment):
             return super()._random_n_step(length, None, recalc)
 
         her_step_inds = self._her_indices(length, indices)
-        n_step = lambda i: 1 if her_step_inds[i] else self._do_n_step(1)
+        n_step = lambda n_limit, i: 1 if her_step_inds[i] else self._do_n_step(n_limit, i)
         return (True, her_step_inds, *self._do_random_n_step(length, n_step))
 
     def _her_indices(self, ep_len, inds):

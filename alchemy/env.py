@@ -11,13 +11,12 @@ class Env:
             total_envs, n_history, history_features, state_size,
             n_step, send_delta,
             eval_limit, eval_ratio, max_n_episode, eval_delay,
-            mcts_random_cap, mcts_rounds, mcts_random_ratio, limit,
+            mcts_random_cap, mcts_rounds, mcts_random_ratio, limit
             ):
 
         assert n_step <= send_delta, "for GAE, but we apply it in general, we need to send at least n_step samples ( adjust send_delta accordingly! )"
 
         self.agent = agent
-
 
         # configs
         self.total_envs = total_envs
@@ -49,7 +48,11 @@ class Env:
     def _select_seed(self, n_iter):
         if self.mcts_random_ratio and 0 == n_iter % self.mcts_random_ratio:
             return random.randint(0, len(self.seeds)-1)
-        self.seeds.append( random.randint(0, self.mcts_random_cap) )
+
+        self.seeds.append(np.asarray([
+            random.randint(0, self.mcts_random_cap
+                ) for _ in range(self.total_envs) ]).ravel())
+
         return -1
 
     def start(self, task, callback):
@@ -80,8 +83,9 @@ class Env:
         scores = [[] for _ in range(self.agent.n_targets)]
         for _ in range(self.eval_limit):
             done = False
+            seed = self.seeds[self._select_seed(len(self.scores))]
             for i in range(len(scores)):
-                for data in self._learning_loop(task, *self._history(), 0, False, i):
+                for data in self._learning_loop(task, *self._history(), seed, False, i):
                     pass
                 scores[i].append(self.score)
                 done = done or task.goal_met(self.score)
@@ -220,9 +224,9 @@ class Env:
     def _history(self):
         f_pi = torch.zeros([self.total_envs, self.history_features])
         history = [ deque(maxlen=self.n_history) for _ in range(self.total_envs) ]
-        for s in torch.zeros([self.n_history, self.state_size]):
+        for s in np.zeros([self.n_history, self.state_size]):
             for i in range(len(history)):
-                history[i].append(s.view(-1))
+                history[i].append(s.ravel())
         return f_pi, history
 
     def _share_experience(self, e, total, last):
@@ -237,8 +241,8 @@ class Env:
             goals, states, features, actions, probs, rewards,
             goods):
 
-        if len(goals) < self.n_step:
-            return # ok this ep we scatter
+#        if len(goals) < self.n_step:
+#            return # ok this ep we scatter
 
         self._share_imidiate(
             goals, states, features, actions, probs, rewards,

@@ -76,12 +76,13 @@ class Agent:
         self.freeze_delta = freeze_delta
         self.freeze_count = freeze_count
 
-        self.n_targets = 1 if not detach_actors else len(brains)
+        n_actors = 1 if not detach_actors else len(brains)
         n_critics = 1 if not detach_critics else len(brains)
+        self.n_targets = max(n_actors, n_critics)
 
         self.brain = Brain(device,
             Actor, Critic, encoder, goal_encoder,
-            n_agents, self.n_targets, n_critics, stable_probs,
+            n_agents, n_actors, n_critics, stable_probs,
             resample_delay,
             lr_critic, clip_norm,
             model_path=model_path, save=save, load=load, delay=delay
@@ -134,6 +135,8 @@ class Agent:
         full_batch = torch.stack(full_batch).transpose(0, 1).contiguous()
 
         for e_i, ep in enumerate(full_batch):
+            if not sum(goods[:, e_i]):
+                continue
             self.exps.push(ep, chunks, e_i, goods)
 
     def _select_algo(self):

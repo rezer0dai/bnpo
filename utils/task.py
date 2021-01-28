@@ -22,8 +22,10 @@ class Task:
 
         if self.do_assess:
             self.goals = einfo.goals
-        goods = [True] * len(einfo.rewards)
+#        goods = [True] * len(einfo.rewards)
+        goods = einfo.goods
 
+        # temporararely - as we recalc now all rews when sampling
         rewards = einfo.rewards if not learn_mode else einfo.custom_rewards
 
         # actions reflect finally choosend actions!!

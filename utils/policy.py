@@ -168,7 +168,8 @@ class KSTEP:
         """
         rewards = rewards.cpu().numpy() # speedup A LOT!!
         reward = lambda data: sum([r * (self.gamma ** i) for i, r in enumerate(data)])
-        return [ reward(rewards[i:i+n]) for i, n in enumerate(n_steps) ]
+        return [ torch.from_numpy(
+            reward(rewards[i:i+n])) for i, n in enumerate(n_steps) ]
 
     def k_discount(self, n_steps):
         return [ self.gamma**n for n in n_steps ]

@@ -54,8 +54,8 @@ class CreditAssignment:# temporary resampling=False, if proved good then no defa
                     c, d.view(-1, 1)] , 1)
 
     def _update_goal(self, her, rewards, goals, states, states_1, n_goals, n_states, actions, her_step_inds, n_steps):
-        if not her:
-            return ( rewards, goals, states, n_goals, n_states )
+#        if not her:
+#            return ( rewards, goals, states, n_goals, n_states )
         return self.update_goal(rewards, goals, states, states_1, n_goals, n_states, actions, her_step_inds, n_steps)
 
     # duck typing
@@ -74,22 +74,22 @@ class CreditAssignment:# temporary resampling=False, if proved good then no defa
         discounts, credits = self._assign_credit(
                 brain, n_steps, rewards, goals, states, features, actions, stochastic)
 
-        discounts = torch.tensor([discounts + self.n_step*[0]])
-        credits = torch.cat([
-            torch.stack(credits), torch.zeros(self.n_step, len(credits[0]))])
+#        discounts = torch.tensor([discounts + self.n_step*[0]])
+#        credits = torch.cat([
+#            torch.stack(credits), torch.zeros(self.n_step, len(credits[0]))])
 
-        return ( credits, discounts )
+        return ( torch.stack(credits), torch.tensor(discounts) )
 
-    def _do_n_step(self, i):
-        return self.n_step if not self.floating_step else random.randint(1, self.n_step)
+    def _do_n_step(self, n_limit, i):
+        return self.n_step if not self.floating_step else random.randint(1, n_limit)
 
     def _random_n_step(self, length, _indices, _recalc):
-        return (False, None, *self._do_random_n_step(length, self._do_n_step))
+        return (False, [0]*length, *self._do_random_n_step(length, self._do_n_step))
 
     def _do_random_n_step(self, length, n_step):
         # + with indices you want to skip last self.n_step!!
-        n_steps = np.array([ n_step(i) for i in range(length - self.n_step) ])
+        n_steps = np.array([ n_step(min(length-i-1, self.n_step), i) for i in range(length - 1) ] + [0])
         #  n_steps[-1] = min(self.n_step-1, n_steps[-1])
         indices = n_steps + np.arange(len(n_steps))
-        indices = np.hstack([indices, self.n_step * [-1]])
+#        indices = np.hstack([indices, 1 * [-1]])
         return (n_steps, indices)

@@ -128,3 +128,9 @@ class GoalGlobalNorm(nn.Module):
         states = states.view(-1, self.size)
         self.norm.update(states)
         return self.norm.normalize(states).view(shape)
+
+class GoalIdentity(nn.Module):
+    def __init__(self, _):
+        super().__init__()
+    def forward(self, states):
+        return states

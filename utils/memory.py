@@ -5,7 +5,7 @@ import itertools
 
 # we want to store tensors as CPU only i think ..
 class Memory:
-    def __init__(self, capacity, recalc_delay, chunks, ep_draw, device):
+    def __init__(self, capacity, recalc_feats_delay, chunks, ep_draw, device):
         self.memory = []
 
         self.ep_draw = ep_draw
@@ -15,7 +15,7 @@ class Memory:
         self.device = device
         self.allowed_mask = []
 
-        self.recalc_delay = recalc_delay
+        self.recalc_feats_delay = recalc_feats_delay
 
     def push(self, experience, allowed_mask):
         self._clip()
@@ -47,7 +47,7 @@ class Memory:
         for i, e in enumerate(eps):
             experience = self._decompose(self.memory[range(*e)])# indexing will copy tensor out
 
-            recalc = 0 == random.randint(0, self.recalc_delay)
+            recalc = 0 == random.randint(0, self.recalc_feats_delay)
             experience = update(
                     recalc,
                     [(j - e[0]).item() for j in idx[i]],
